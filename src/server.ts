@@ -97,7 +97,7 @@ const transport: StreamableHTTPServerTransport =
   new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined, // set to undefined for stateless servers
   });
-
+transport.addTool(listMethods);
 // Setup routes for the server
 const setupServer = async () => {
   await server.connect(transport);
