@@ -21,7 +21,6 @@
   "description": "",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.11.1",
-    "mcp-tooling": "^0.6.2",
     "express": "^5.1.0",
     "zod": "^3.24.4"
   },
