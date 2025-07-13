@@ -121,18 +121,8 @@ app.post("/mcp", async (req: Request, res: Response) => {
   }
 });
 
-app.get("/mcp", async (req: Request, res: Response) => {
-  console.log("Received GET MCP request");
-  res.writeHead(405).end(
-    JSON.stringify({
-      jsonrpc: "2.0",
-      error: {
-        code: -32000,
-        message: "Method not allowed.",
-      },
-      id: null,
-    })
-  );
+app.get("/mcp/tools", (req, res) => {
+  res.json(server.describeTools());
 });
 
 app.delete("/mcp", async (req: Request, res: Response) => {
