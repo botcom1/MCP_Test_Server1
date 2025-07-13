@@ -98,7 +98,7 @@ const tools = [listMethods, getDadJoke,getChuckCategories,getChuckCategories,get
 
 const transport: StreamableHTTPServerTransport =
   new StreamableHTTPServerTransport({
-    sessionIdGenerator: undefined, tools// set to undefined for stateless servers
+    sessionIdGenerator: undefined, // set to undefined for stateless servers
   });
 
 const registry = new ToolRegistry();
