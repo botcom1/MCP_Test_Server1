@@ -122,7 +122,7 @@ app.post("/mcp", async (req: Request, res: Response) => {
 });
 
 app.get("/mcp/tools", (req, res) => {
-  res.json(server.tools);
+  res.json(server.registry.list());
 });
 
 app.delete("/mcp", async (req: Request, res: Response) => {
