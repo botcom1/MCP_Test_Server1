@@ -2,8 +2,6 @@ import express, { Request, Response } from "express";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { z } from "zod";
-import { listMethods } from "./tools/listMethods.ts";
-import { ToolRegistry } from "mcp-tooling";
 
 const server = new McpServer({
   name: "mcp-streamable-http",
@@ -94,15 +92,10 @@ const getDadJoke = server.tool(
 const app = express();
 app.use(express.json());
 
-const tools = [listMethods, getDadJoke,getChuckCategories,getChuckCategories,getChuckJoke];
-
 const transport: StreamableHTTPServerTransport =
   new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined, // set to undefined for stateless servers
   });
-
-const registry = new ToolRegistry();
-registry.add(listMethods);
 
 // Setup routes for the server
 const setupServer = async () => {
