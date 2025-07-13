@@ -89,6 +89,8 @@ const getDadJoke = server.tool(
   }
 );
 
+const tools = ["get-chuck-joke" ,"get—chuck-categories","get-dad-joke","get-yo-mama-joke"]
+
 const app = express();
 app.use(express.json());
 
