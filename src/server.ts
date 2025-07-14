@@ -4,7 +4,10 @@ import { z } from 'zod';
 const app = express();
 app.use(express.json());
 
-// Tool definitions following MCP spec
+// Store server state
+let isInitialized = false;
+
+// Tool definitions following MCP spec exactly
 const toolDefinitions = [
   {
     name: 'get-chuck-joke',
@@ -23,7 +26,8 @@ const toolDefinitions = [
       properties: {
         category: {
           type: 'string',
-          description: 'Category of the Chuck Norris joke'
+          description: 'Category of the Chuck Norris joke',
+          enum: ['animal', 'career', 'celebrity', 'dev', 'explicit', 'fashion', 'food', 'history', 'money', 'movie', 'music', 'political', 'religion', 'science', 'sport', 'travel']
         }
       },
       required: ['category']
@@ -49,220 +53,221 @@ const toolDefinitions = [
   }
 ];
 
-// JSON-RPC request validation
-const JsonRpcRequestSchema = z.object({
-  jsonrpc: z.literal('2.0'),
-  id: z.union([z.string(), z.number()]),
-  method: z.string(),
-  params: z.any().optional()
-});
+// MCP Server implementation that auto-negotiates with Copilot Studio
+class MCPServer {
+  async handleRequest(body: any): Promise<any> {
+    // Handle both single requests and batch requests
+    if (Array.isArray(body)) {
+      // Batch request
+      const responses = await Promise.all(body.map(req => this.processSingleRequest(req)));
+      return responses;
+    } else {
+      // Single request
+      return await this.processSingleRequest(body);
+    }
+  }
 
-// Main MCP endpoint - handles all JSON-RPC 2.0 calls
-app.post('/mcp', async (req: Request, res: Response): Promise<void> => {
-  console.log('Received MCP request:', JSON.stringify(req.body, null, 2));
-
-  try {
-    const request = JsonRpcRequestSchema.parse(req.body);
+  async processSingleRequest(request: any): Promise<any> {
     const { jsonrpc, id, method, params } = request;
 
-    // Handle MCP protocol methods
-    switch (method) {
-      // Initialize method - called when Copilot Studio connects
-      case 'initialize': {
-        res.json({
-          jsonrpc: '2.0',
-          id,
-          result: {
-            protocolVersion: '2024-11-05',
-            capabilities: {
-              tools: {},
-              logging: {}
-            },
-            serverInfo: {
-              name: 'jokes-mcp-server',
-              version: '1.0.0'
+    try {
+      switch (method) {
+        case 'initialize':
+          isInitialized = true;
+          return {
+            jsonrpc: '2.0',
+            id,
+            result: {
+              protocolVersion: '2024-11-05',
+              capabilities: {
+                tools: {},
+                logging: {}
+              },
+              serverInfo: {
+                name: 'jokes-mcp-server',
+                version: '1.0.0'
+              }
             }
-          }
-        });
-        return;
-      }
+          };
 
-      // List available tools - this is what Copilot Studio uses to discover tools
-      case 'tools/list': {
-        res.json({
-          jsonrpc: '2.0',
-          id,
-          result: {
-            tools: toolDefinitions
-          }
-        });
-        return;
-      }
+        case 'initialized':
+          // Client confirming initialization
+          return {
+            jsonrpc: '2.0',
+            id,
+            result: {}
+          };
 
-      // Execute a tool
-      case 'tools/call': {
-        if (!params || !params.name) {
-          res.json({
+        case 'tools/list':
+          return {
+            jsonrpc: '2.0',
+            id,
+            result: {
+              tools: toolDefinitions
+            }
+          };
+
+        case 'tools/call':
+          return await this.executeTool(id, params);
+
+        case 'completion/complete':
+          // Handle completion requests
+          return {
+            jsonrpc: '2.0',
+            id,
+            result: {
+              completion: {
+                values: [],
+                total: 0,
+                hasMore: false
+              }
+            }
+          };
+
+        default:
+          return {
             jsonrpc: '2.0',
             id,
             error: {
-              code: -32602,
-              message: 'Invalid params: tool name is required'
+              code: -32601,
+              message: `Method not found: ${method}`
             }
-          });
-          return;
+          };
+      }
+    } catch (error) {
+      return {
+        jsonrpc: '2.0',
+        id,
+        error: {
+          code: -32603,
+          message: error instanceof Error ? error.message : 'Internal error'
+        }
+      };
+    }
+  }
+
+  async executeTool(id: any, params: any): Promise<any> {
+    if (!params || !params.name) {
+      return {
+        jsonrpc: '2.0',
+        id,
+        error: {
+          code: -32602,
+          message: 'Invalid params: tool name is required'
+        }
+      };
+    }
+
+    const toolName = params.name;
+    const toolArgs = params.arguments || {};
+
+    try {
+      let content: string;
+
+      switch (toolName) {
+        case 'get-chuck-joke': {
+          const response = await fetch('https://api.chucknorris.io/jokes/random');
+          const data = await response.json();
+          content = data.value;
+          break;
         }
 
-        const toolName = params.name;
-        const toolArgs = params.arguments || {};
-        let result: any;
-
-        switch (toolName) {
-          case 'get-chuck-joke': {
-            const response = await fetch('https://api.chucknorris.io/jokes/random');
-            const data = await response.json();
-            result = {
-              content: [
-                {
-                  type: 'text',
-                  text: data.value
-                }
-              ]
-            };
-            break;
-          }
-
-          case 'get-chuck-joke-by-category': {
-            if (!toolArgs.category) {
-              res.json({
-                jsonrpc: '2.0',
-                id,
-                error: {
-                  code: -32602,
-                  message: 'Invalid params: category is required'
-                }
-              });
-              return;
-            }
-            
-            const response = await fetch(
-              `https://api.chucknorris.io/jokes/random?category=${toolArgs.category}`
-            );
-            
-            if (!response.ok) {
-              res.json({
-                jsonrpc: '2.0',
-                id,
-                error: {
-                  code: -32603,
-                  message: 'Invalid category'
-                }
-              });
-              return;
-            }
-            
-            const data = await response.json();
-            result = {
-              content: [
-                {
-                  type: 'text',
-                  text: data.value
-                }
-              ]
-            };
-            break;
-          }
-
-          case 'get-chuck-categories': {
-            const response = await fetch('https://api.chucknorris.io/jokes/categories');
-            const data = await response.json();
-            result = {
-              content: [
-                {
-                  type: 'text',
-                  text: `Available categories: ${data.join(', ')}`
-                }
-              ]
-            };
-            break;
-          }
-
-          case 'get-dad-joke': {
-            const response = await fetch('https://icanhazdadjoke.com/', {
-              headers: { Accept: 'application/json' }
-            });
-            const data = await response.json();
-            result = {
-              content: [
-                {
-                  type: 'text',
-                  text: data.joke
-                }
-              ]
-            };
-            break;
-          }
-
-          default:
-            res.json({
+        case 'get-chuck-joke-by-category': {
+          if (!toolArgs.category) {
+            return {
               jsonrpc: '2.0',
               id,
               error: {
-                code: -32601,
-                message: `Unknown tool: ${toolName}`
+                code: -32602,
+                message: 'Invalid params: category is required'
               }
-            });
-            return;
-        }
-
-        res.json({
-          jsonrpc: '2.0',
-          id,
-          result
-        });
-        return;
-      }
-
-      // Handle other potential MCP methods
-      case 'notifications/initialized':
-      case 'logging/setLevel': {
-        // Acknowledge these methods
-        res.json({
-          jsonrpc: '2.0',
-          id,
-          result: {}
-        });
-        return;
-      }
-
-      default:
-        res.json({
-          jsonrpc: '2.0',
-          id,
-          error: {
-            code: -32601,
-            message: `Method not found: ${method}`
+            };
           }
-        });
-        return;
-    }
-
-  } catch (error) {
-    console.error('MCP request error:', error);
-    
-    if (error instanceof z.ZodError) {
-      res.json({
-        jsonrpc: '2.0',
-        id: req.body.id || null,
-        error: {
-          code: -32600,
-          message: 'Invalid Request',
-          data: error.errors
+          
+          const response = await fetch(
+            `https://api.chucknorris.io/jokes/random?category=${toolArgs.category}`
+          );
+          
+          if (!response.ok) {
+            return {
+              jsonrpc: '2.0',
+              id,
+              error: {
+                code: -32603,
+                message: 'Invalid category'
+              }
+            };
+          }
+          
+          const data = await response.json();
+          content = data.value;
+          break;
         }
-      });
-      return;
-    }
 
+        case 'get-chuck-categories': {
+          const response = await fetch('https://api.chucknorris.io/jokes/categories');
+          const data = await response.json();
+          content = `Available categories: ${data.join(', ')}`;
+          break;
+        }
+
+        case 'get-dad-joke': {
+          const response = await fetch('https://icanhazdadjoke.com/', {
+            headers: { Accept: 'application/json' }
+          });
+          const data = await response.json();
+          content = data.joke;
+          break;
+        }
+
+        default:
+          return {
+            jsonrpc: '2.0',
+            id,
+            error: {
+              code: -32601,
+              message: `Unknown tool: ${toolName}`
+            }
+          };
+      }
+
+      return {
+        jsonrpc: '2.0',
+        id,
+        result: {
+          content: [
+            {
+              type: 'text',
+              text: content
+            }
+          ]
+        }
+      };
+    } catch (error) {
+      return {
+        jsonrpc: '2.0',
+        id,
+        error: {
+          code: -32603,
+          message: `Tool execution failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+        }
+      };
+    }
+  }
+}
+
+const mcpServer = new MCPServer();
+
+// Main MCP endpoint - handles all requests
+app.post('/mcp', async (req: Request, res: Response): Promise<void> => {
+  console.log('MCP Request:', JSON.stringify(req.body, null, 2));
+  
+  try {
+    const response = await mcpServer.handleRequest(req.body);
+    console.log('MCP Response:', JSON.stringify(response, null, 2));
+    res.json(response);
+  } catch (error) {
+    console.error('MCP Error:', error);
     res.status(500).json({
       jsonrpc: '2.0',
       id: req.body.id || null,
@@ -274,41 +279,63 @@ app.post('/mcp', async (req: Request, res: Response): Promise<void> => {
   }
 });
 
-// Health check endpoint
+// SSE endpoint for streaming (if needed by Copilot Studio)
+app.get('/mcp/sse', (req: Request, res: Response) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  
+  // Send initial connection event
+  res.write('event: open\n');
+  res.write('data: {}\n\n');
+  
+  // Keep connection alive
+  const keepAlive = setInterval(() => {
+    res.write('event: ping\n');
+    res.write('data: {}\n\n');
+  }, 30000);
+  
+  req.on('close', () => {
+    clearInterval(keepAlive);
+  });
+});
+
+// Health check
 app.get('/health', (_req: Request, res: Response): void => {
   res.json({
     status: 'healthy',
-    timestamp: new Date().toISOString(),
     server: 'jokes-mcp-server',
+    initialized: isInitialized,
     tools: toolDefinitions.length
   });
 });
 
-// Root endpoint with server info
+// Root endpoint
 app.get('/', (_req: Request, res: Response): void => {
   res.json({
     name: 'Jokes MCP Server',
     version: '1.0.0',
-    protocol: 'MCP',
-    description: 'Model Context Protocol server for jokes',
+    protocol: 'MCP/2024-11-05',
     endpoints: {
       mcp: 'POST /mcp',
+      sse: 'GET /mcp/sse',
       health: 'GET /health'
     }
   });
 });
 
-// Swagger for Power Platform Custom Connector - MCP-aware
-app.get('/api/swagger.json', (_req: Request, res: Response): void => {
+// Create OpenAPI spec for the MCP connector
+app.get('/api/mcp-connector.json', (_req: Request, res: Response): void => {
   const PORT = process.env.PORT ?? 3000;
   const host = process.env.HOST || `localhost:${PORT}`;
   
-  const swagger = {
+  // This is a special OpenAPI spec for MCP connectors
+  const spec = {
     swagger: '2.0',
     info: {
       title: 'Jokes MCP Server',
-      description: 'Model Context Protocol server that provides joke tools to Copilot Studio',
-      version: '1.0',
+      description: 'Model Context Protocol server providing joke tools',
+      version: '1.0.0',
       'x-ms-api-annotation': {
         status: 'Production'
       }
@@ -316,74 +343,67 @@ app.get('/api/swagger.json', (_req: Request, res: Response): void => {
     host: host,
     basePath: '/',
     schemes: ['https', 'http'],
+    consumes: ['application/json'],
+    produces: ['application/json'],
     paths: {
       '/mcp': {
         post: {
-          summary: 'MCP Protocol Endpoint',
-          operationId: 'mcpProtocol',
-          description: 'Handles all MCP protocol communications including tool discovery and execution',
-          consumes: ['application/json'],
-          produces: ['application/json'],
+          summary: 'MCP Protocol Handler',
+          description: 'Processes MCP protocol messages',
+          operationId: 'mcp',
           parameters: [
             {
-              in: 'body',
               name: 'body',
-              description: 'JSON-RPC 2.0 request',
+              in: 'body',
               required: true,
               schema: {
-                type: 'object',
-                properties: {
-                  jsonrpc: {
-                    type: 'string',
-                    enum: ['2.0'],
-                    default: '2.0'
-                  },
-                  id: {
-                    type: 'string',
-                    default: '1'
-                  },
-                  method: {
-                    type: 'string',
-                    enum: ['initialize', 'tools/list', 'tools/call'],
-                    description: 'MCP method to call'
-                  },
-                  params: {
-                    type: 'object',
-                    description: 'Method-specific parameters'
-                  }
-                },
-                required: ['jsonrpc', 'id', 'method']
+                type: 'object'
               }
             }
           ],
           responses: {
             '200': {
-              description: 'JSON-RPC 2.0 response',
+              description: 'Success',
               schema: {
                 type: 'object'
               }
             }
           },
-          'x-ms-visibility': 'important'
+          'x-ms-visibility': 'internal'
         }
       }
     },
-    securityDefinitions: {},
-    security: []
+    'x-ms-connector-metadata': [
+      {
+        propertyName: 'Website',
+        propertyValue: 'https://modelcontextprotocol.io'
+      },
+      {
+        propertyName: 'Privacy policy',
+        propertyValue: 'https://modelcontextprotocol.io/privacy'
+      },
+      {
+        propertyName: 'Categories',
+        propertyValue: 'AI;Data'
+      }
+    ]
   };
   
-  res.json(swagger);
+  res.json(spec);
 });
 
 const PORT = process.env.PORT ?? 3000;
 app.listen(PORT, () => {
   console.log(`\n🚀 Jokes MCP Server running on port ${PORT}`);
-  console.log(`\n📋 For Copilot Studio integration:`);
-  console.log(`   1. Deploy this server to a public URL`);
-  console.log(`   2. In Copilot Studio, add "Model Context Protocol" tool`);
-  console.log(`   3. Use your server URL: https://your-server.com/mcp`);
-  console.log(`   4. Copilot Studio will auto-discover all ${toolDefinitions.length} tools\n`);
-  console.log(`Available tools:`);
+  console.log(`\n📋 Integration Instructions:`);
+  console.log(`\nFor Copilot Studio (MCP Server):`);
+  console.log(`1. In Copilot Studio, go to Tools > Add tool`);
+  console.log(`2. Search for "Model Context Protocol" and select it`);
+  console.log(`3. Configure with:`);
+  console.log(`   - Server URL: https://your-server.com/mcp`);
+  console.log(`   - No authentication required`);
+  console.log(`4. Save and the tools will auto-populate\n`);
+  console.log(`Available tools (${toolDefinitions.length} total):`);
   toolDefinitions.forEach(tool => {
     console.log(`   - ${tool.name}: ${tool.description}`);
   });
