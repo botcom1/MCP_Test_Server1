@@ -1,6 +1,8 @@
 import express, { Request, Response } from 'express';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp';
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp';
+// Try this import, if both are exported from server/index.js or main entry
+import { McpServer, StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server';
+// If above fails, try importing from '@modelcontextprotocol/sdk' directly
+
 import { z } from 'zod';
 
 const server = new McpServer({
@@ -23,7 +25,7 @@ server.tool(
   'get-chuck-joke-by-category',
   'Get a random Chuck Norris joke by category',
   { category: z.string().describe('Category of the Chuck Norris joke') },
-  async ({ category }) => {
+  async ({ category }: { category: string }) => {
     const res = await fetch(
       `https://api.chucknorris.io/jokes/random?category=${category}`
     );
@@ -57,7 +59,7 @@ server.tool(
 // Log registered methods at startup
 console.log(
   'Registered MCP methods:',
-  server.describeTools().map((t) => t.name)
+  server.describeTools().map((t: { name: string }) => t.name)
 );
 
 const app = express();
