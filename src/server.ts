@@ -1,7 +1,6 @@
 import express, { Request, Response } from 'express';
-// Try this import, if both are exported from server/index.js or main entry
-import { McpServer, StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk';
-// If above fails, try importing from '@modelcontextprotocol/sdk' directly
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 
 import { z } from 'zod';
 
