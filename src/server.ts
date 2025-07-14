@@ -4,10 +4,9 @@ import { z } from 'zod';
 const app = express();
 app.use(express.json());
 
-// Tool definitions
+// Tool definitions following MCP spec
 const toolDefinitions = [
   {
-    category: 'tool',
     name: 'get-chuck-joke',
     description: 'Get a random Chuck Norris joke',
     inputSchema: {
@@ -17,7 +16,6 @@ const toolDefinitions = [
     }
   },
   {
-    category: 'tool',
     name: 'get-chuck-joke-by-category',
     description: 'Get a random Chuck Norris joke by category',
     inputSchema: {
@@ -25,15 +23,13 @@ const toolDefinitions = [
       properties: {
         category: {
           type: 'string',
-          description: 'Category of the Chuck Norris joke',
-          enum: ['animal', 'career', 'celebrity', 'dev', 'explicit', 'fashion', 'food', 'history', 'money', 'movie', 'music', 'political', 'religion', 'science', 'sport', 'travel']
+          description: 'Category of the Chuck Norris joke'
         }
       },
       required: ['category']
     }
   },
   {
-    category: 'tool',
     name: 'get-chuck-categories',
     description: 'Get all available categories for Chuck Norris jokes',
     inputSchema: {
@@ -43,7 +39,6 @@ const toolDefinitions = [
     }
   },
   {
-    category: 'tool',
     name: 'get-dad-joke',
     description: 'Get a random Dad joke',
     inputSchema: {
@@ -54,290 +49,190 @@ const toolDefinitions = [
   }
 ];
 
-// Generate dynamic Swagger that creates individual operations for each tool
-function generateDynamicSwagger(host: string): any {
-  const paths: any = {};
-  
-  // Create a separate POST operation for each tool
-  toolDefinitions.forEach(tool => {
-    const operationId = tool.name.replace(/-/g, '_');
-    const pathName = `/mcp/${tool.name}`;
-    
-    paths[pathName] = {
-      post: {
-        summary: tool.description,
-        operationId: operationId,
-        description: `Executes the ${tool.name} tool via JSON-RPC 2.0`,
-        consumes: ['application/json'],
-        produces: ['application/json'],
-        parameters: [
-          {
-            in: 'body',
-            name: 'body',
-            description: 'Tool execution request',
-            required: true,
-            schema: {
-              type: 'object',
-              properties: {
-                // Pre-fill the method name for this specific tool
-                jsonrpc: {
-                  type: 'string',
-                  enum: ['2.0'],
-                  default: '2.0',
-                  'x-ms-visibility': 'internal' // Hide from Power Platform UI
-                },
-                id: {
-                  type: 'integer',
-                  default: 1,
-                  'x-ms-visibility': 'internal' // Hide from Power Platform UI
-                },
-                method: {
-                  type: 'string',
-                  enum: [tool.name],
-                  default: tool.name,
-                  'x-ms-visibility': 'internal' // Hide from Power Platform UI
-                },
-                params: tool.inputSchema.properties && Object.keys(tool.inputSchema.properties).length > 0 
-                  ? tool.inputSchema 
-                  : {
-                      type: 'object',
-                      'x-ms-visibility': 'internal',
-                      default: {}
-                    }
-              },
-              required: ['jsonrpc', 'id', 'method']
-            }
-          }
-        ],
-        responses: {
-          '200': {
-            description: 'Successful response',
-            schema: {
-              type: 'object',
-              properties: {
-                jsonrpc: { type: 'string' },
-                id: { type: 'integer' },
-                result: {
-                  type: 'object',
-                  properties: {
-                    content: {
-                      type: 'array',
-                      items: {
-                        type: 'object',
-                        properties: {
-                          type: { type: 'string' },
-                          text: { type: 'string' }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    };
-  });
-  
-  // Also keep the generic MCP endpoint
-  paths['/mcp'] = {
-    post: {
-      summary: 'Execute any MCP tool',
-      operationId: 'callMCP',
-      description: 'Generic endpoint to invoke any registered MCP method',
-      consumes: ['application/json'],
-      produces: ['application/json'],
-      parameters: [
-        {
-          in: 'body',
-          name: 'body',
-          description: 'JSON-RPC 2.0 request envelope',
-          required: true,
-          schema: {
-            type: 'object',
-            properties: {
-              jsonrpc: {
-                type: 'string',
-                enum: ['2.0'],
-                default: '2.0'
-              },
-              id: {
-                type: 'integer',
-                format: 'int64',
-                default: 1
-              },
-              method: {
-                type: 'string',
-                description: 'MCP method to invoke',
-                enum: toolDefinitions.map(t => t.name)
-              },
-              params: {
-                type: 'object',
-                description: 'Method parameters'
-              }
-            },
-            required: ['jsonrpc', 'id', 'method']
-          }
-        }
-      ],
-      responses: {
-        '200': {
-          description: 'JSON-RPC 2.0 response',
-          schema: {
-            type: 'object',
-            properties: {
-              jsonrpc: { type: 'string' },
-              id: { type: 'integer' },
-              result: { type: 'object' }
-            }
-          }
-        }
-      }
-    }
-  };
-  
-  paths['/mcp/tools'] = {
-    get: {
-      summary: 'List all available tools',
-      operationId: 'listTools',
-      produces: ['application/json'],
-      responses: {
-        '200': {
-          description: 'Array of tool definitions',
-          schema: {
-            type: 'array',
-            items: {
-              $ref: '#/definitions/Tool'
-            }
-          }
-        }
-      }
-    }
-  };
-  
-  return {
-    swagger: '2.0',
-    info: {
-      title: 'Jokes MCP Server',
-      description: 'Get jokes via MCP - each tool is exposed as a separate operation',
-      version: '1.0',
-      'x-ms-api-annotation': {
-        status: 'Production'
-      }
-    },
-    host: host,
-    basePath: '/',
-    schemes: ['https', 'http'],
-    paths: paths,
-    definitions: {
-      Tool: {
-        type: 'object',
-        properties: {
-          category: { type: 'string' },
-          name: { type: 'string' },
-          description: { type: 'string' },
-          inputSchema: { type: 'object' }
-        }
-      }
-    },
-    securityDefinitions: {},
-    security: []
-  };
-}
-
-// Handle all tool-specific endpoints
-app.post('/mcp/:toolName', async (req: Request, res: Response): Promise<void> => {
-  const { toolName } = req.params;
-  
-  // Override the method with the tool name from the URL
-  const jsonRpcRequest = {
-    jsonrpc: req.body.jsonrpc || '2.0',
-    id: req.body.id || 1,
-    method: toolName,
-    params: req.body.params || {}
-  };
-  
-  // Process as normal JSON-RPC
-  req.body = jsonRpcRequest;
-  await handleMcpRequest(req, res);
+// JSON-RPC request validation
+const JsonRpcRequestSchema = z.object({
+  jsonrpc: z.literal('2.0'),
+  id: z.union([z.string(), z.number()]),
+  method: z.string(),
+  params: z.any().optional()
 });
 
-// Generic MCP endpoint
+// Main MCP endpoint - handles all JSON-RPC 2.0 calls
 app.post('/mcp', async (req: Request, res: Response): Promise<void> => {
-  await handleMcpRequest(req, res);
-});
+  console.log('Received MCP request:', JSON.stringify(req.body, null, 2));
 
-// Shared handler for all MCP requests
-async function handleMcpRequest(req: Request, res: Response): Promise<void> {
   try {
-    const { jsonrpc, id, method, params = {} } = req.body;
-    let result: any;
+    const request = JsonRpcRequestSchema.parse(req.body);
+    const { jsonrpc, id, method, params } = request;
 
+    // Handle MCP protocol methods
     switch (method) {
-      case 'get-chuck-joke': {
-        const response = await fetch('https://api.chucknorris.io/jokes/random');
-        const data = await response.json();
-        result = {
-          content: [{ type: 'text', text: data.value }]
-        };
-        break;
+      // Initialize method - called when Copilot Studio connects
+      case 'initialize': {
+        res.json({
+          jsonrpc: '2.0',
+          id,
+          result: {
+            protocolVersion: '2024-11-05',
+            capabilities: {
+              tools: {},
+              logging: {}
+            },
+            serverInfo: {
+              name: 'jokes-mcp-server',
+              version: '1.0.0'
+            }
+          }
+        });
+        return;
       }
 
-      case 'get-chuck-joke-by-category': {
-        if (!params.category) {
+      // List available tools - this is what Copilot Studio uses to discover tools
+      case 'tools/list': {
+        res.json({
+          jsonrpc: '2.0',
+          id,
+          result: {
+            tools: toolDefinitions
+          }
+        });
+        return;
+      }
+
+      // Execute a tool
+      case 'tools/call': {
+        if (!params || !params.name) {
           res.json({
             jsonrpc: '2.0',
             id,
             error: {
               code: -32602,
-              message: 'Invalid params: category is required'
+              message: 'Invalid params: tool name is required'
             }
           });
           return;
         }
-        
-        const response = await fetch(
-          `https://api.chucknorris.io/jokes/random?category=${params.category}`
-        );
-        
-        if (!response.ok) {
-          res.json({
-            jsonrpc: '2.0',
-            id,
-            error: {
-              code: -32603,
-              message: 'Invalid category'
+
+        const toolName = params.name;
+        const toolArgs = params.arguments || {};
+        let result: any;
+
+        switch (toolName) {
+          case 'get-chuck-joke': {
+            const response = await fetch('https://api.chucknorris.io/jokes/random');
+            const data = await response.json();
+            result = {
+              content: [
+                {
+                  type: 'text',
+                  text: data.value
+                }
+              ]
+            };
+            break;
+          }
+
+          case 'get-chuck-joke-by-category': {
+            if (!toolArgs.category) {
+              res.json({
+                jsonrpc: '2.0',
+                id,
+                error: {
+                  code: -32602,
+                  message: 'Invalid params: category is required'
+                }
+              });
+              return;
             }
-          });
-          return;
+            
+            const response = await fetch(
+              `https://api.chucknorris.io/jokes/random?category=${toolArgs.category}`
+            );
+            
+            if (!response.ok) {
+              res.json({
+                jsonrpc: '2.0',
+                id,
+                error: {
+                  code: -32603,
+                  message: 'Invalid category'
+                }
+              });
+              return;
+            }
+            
+            const data = await response.json();
+            result = {
+              content: [
+                {
+                  type: 'text',
+                  text: data.value
+                }
+              ]
+            };
+            break;
+          }
+
+          case 'get-chuck-categories': {
+            const response = await fetch('https://api.chucknorris.io/jokes/categories');
+            const data = await response.json();
+            result = {
+              content: [
+                {
+                  type: 'text',
+                  text: `Available categories: ${data.join(', ')}`
+                }
+              ]
+            };
+            break;
+          }
+
+          case 'get-dad-joke': {
+            const response = await fetch('https://icanhazdadjoke.com/', {
+              headers: { Accept: 'application/json' }
+            });
+            const data = await response.json();
+            result = {
+              content: [
+                {
+                  type: 'text',
+                  text: data.joke
+                }
+              ]
+            };
+            break;
+          }
+
+          default:
+            res.json({
+              jsonrpc: '2.0',
+              id,
+              error: {
+                code: -32601,
+                message: `Unknown tool: ${toolName}`
+              }
+            });
+            return;
         }
-        
-        const data = await response.json();
-        result = {
-          content: [{ type: 'text', text: data.value }]
-        };
-        break;
-      }
 
-      case 'get-chuck-categories': {
-        const response = await fetch('https://api.chucknorris.io/jokes/categories');
-        const data = await response.json();
-        result = {
-          content: [{ type: 'text', text: data.join(', ') }]
-        };
-        break;
-      }
-
-      case 'get-dad-joke': {
-        const response = await fetch('https://icanhazdadjoke.com/', {
-          headers: { Accept: 'application/json' }
+        res.json({
+          jsonrpc: '2.0',
+          id,
+          result
         });
-        const data = await response.json();
-        result = {
-          content: [{ type: 'text', text: data.joke }]
-        };
-        break;
+        return;
+      }
+
+      // Handle other potential MCP methods
+      case 'notifications/initialized':
+      case 'logging/setLevel': {
+        // Acknowledge these methods
+        res.json({
+          jsonrpc: '2.0',
+          id,
+          result: {}
+        });
+        return;
       }
 
       default:
@@ -352,14 +247,22 @@ async function handleMcpRequest(req: Request, res: Response): Promise<void> {
         return;
     }
 
-    res.json({
-      jsonrpc: '2.0',
-      id,
-      result
-    });
-
   } catch (error) {
     console.error('MCP request error:', error);
+    
+    if (error instanceof z.ZodError) {
+      res.json({
+        jsonrpc: '2.0',
+        id: req.body.id || null,
+        error: {
+          code: -32600,
+          message: 'Invalid Request',
+          data: error.errors
+        }
+      });
+      return;
+    }
+
     res.status(500).json({
       jsonrpc: '2.0',
       id: req.body.id || null,
@@ -369,30 +272,119 @@ async function handleMcpRequest(req: Request, res: Response): Promise<void> {
       }
     });
   }
-}
-
-// List tools endpoint
-app.get('/mcp/tools', (_req: Request, res: Response): void => {
-  res.json(toolDefinitions);
 });
 
-// Dynamic Swagger generation
+// Health check endpoint
+app.get('/health', (_req: Request, res: Response): void => {
+  res.json({
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    server: 'jokes-mcp-server',
+    tools: toolDefinitions.length
+  });
+});
+
+// Root endpoint with server info
+app.get('/', (_req: Request, res: Response): void => {
+  res.json({
+    name: 'Jokes MCP Server',
+    version: '1.0.0',
+    protocol: 'MCP',
+    description: 'Model Context Protocol server for jokes',
+    endpoints: {
+      mcp: 'POST /mcp',
+      health: 'GET /health'
+    }
+  });
+});
+
+// Swagger for Power Platform Custom Connector - MCP-aware
 app.get('/api/swagger.json', (_req: Request, res: Response): void => {
   const PORT = process.env.PORT ?? 3000;
   const host = process.env.HOST || `localhost:${PORT}`;
   
-  const swagger = generateDynamicSwagger(host);
+  const swagger = {
+    swagger: '2.0',
+    info: {
+      title: 'Jokes MCP Server',
+      description: 'Model Context Protocol server that provides joke tools to Copilot Studio',
+      version: '1.0',
+      'x-ms-api-annotation': {
+        status: 'Production'
+      }
+    },
+    host: host,
+    basePath: '/',
+    schemes: ['https', 'http'],
+    paths: {
+      '/mcp': {
+        post: {
+          summary: 'MCP Protocol Endpoint',
+          operationId: 'mcpProtocol',
+          description: 'Handles all MCP protocol communications including tool discovery and execution',
+          consumes: ['application/json'],
+          produces: ['application/json'],
+          parameters: [
+            {
+              in: 'body',
+              name: 'body',
+              description: 'JSON-RPC 2.0 request',
+              required: true,
+              schema: {
+                type: 'object',
+                properties: {
+                  jsonrpc: {
+                    type: 'string',
+                    enum: ['2.0'],
+                    default: '2.0'
+                  },
+                  id: {
+                    type: 'string',
+                    default: '1'
+                  },
+                  method: {
+                    type: 'string',
+                    enum: ['initialize', 'tools/list', 'tools/call'],
+                    description: 'MCP method to call'
+                  },
+                  params: {
+                    type: 'object',
+                    description: 'Method-specific parameters'
+                  }
+                },
+                required: ['jsonrpc', 'id', 'method']
+              }
+            }
+          ],
+          responses: {
+            '200': {
+              description: 'JSON-RPC 2.0 response',
+              schema: {
+                type: 'object'
+              }
+            }
+          },
+          'x-ms-visibility': 'important'
+        }
+      }
+    },
+    securityDefinitions: {},
+    security: []
+  };
+  
   res.json(swagger);
 });
 
 const PORT = process.env.PORT ?? 3000;
 app.listen(PORT, () => {
-  console.log(`MCP Server listening on port ${PORT}`);
-  console.log(`\nPower Platform Integration:`);
-  console.log(`1. Import swagger from: http://localhost:${PORT}/api/swagger.json`);
-  console.log(`2. Each tool will appear as a separate operation in Power Platform`);
-  console.log(`\nAvailable operations:`);
+  console.log(`\n🚀 Jokes MCP Server running on port ${PORT}`);
+  console.log(`\n📋 For Copilot Studio integration:`);
+  console.log(`   1. Deploy this server to a public URL`);
+  console.log(`   2. In Copilot Studio, add "Model Context Protocol" tool`);
+  console.log(`   3. Use your server URL: https://your-server.com/mcp`);
+  console.log(`   4. Copilot Studio will auto-discover all ${toolDefinitions.length} tools\n`);
+  console.log(`Available tools:`);
   toolDefinitions.forEach(tool => {
-    console.log(`   - ${tool.name} (POST /mcp/${tool.name})`);
+    console.log(`   - ${tool.name}: ${tool.description}`);
   });
 });
