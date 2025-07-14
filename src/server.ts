@@ -45,7 +45,7 @@ const toolDefinitions = [
 // Each tool should be exposed as a separate endpoint for easier integration
 
 // Get Chuck Norris joke endpoint
-app.get('/api/chuck-joke', async (_req: Request, res: Response) => {
+app.get('/api/chuck-joke', async (_req: Request, res: Response): Promise<void> => {
   try {
     const response = await fetch('https://api.chucknorris.io/jokes/random');
     const data = await response.json();
@@ -66,7 +66,7 @@ app.get('/api/chuck-joke', async (_req: Request, res: Response) => {
 });
 
 // Get Chuck Norris joke by category
-app.get('/api/chuck-joke/:category', async (req: Request, res: Response) => {
+app.get('/api/chuck-joke/:category', async (req: Request, res: Response): Promise<void> => {
   try {
     const { category } = req.params;
     const response = await fetch(
@@ -74,10 +74,11 @@ app.get('/api/chuck-joke/:category', async (req: Request, res: Response) => {
     );
     
     if (!response.ok) {
-      return res.status(400).json({
+      res.status(400).json({
         success: false,
         error: 'Invalid category'
       });
+      return;
     }
     
     const data = await response.json();
@@ -99,7 +100,7 @@ app.get('/api/chuck-joke/:category', async (req: Request, res: Response) => {
 });
 
 // Get Chuck Norris categories
-app.get('/api/chuck-categories', async (_req: Request, res: Response) => {
+app.get('/api/chuck-categories', async (_req: Request, res: Response): Promise<void> => {
   try {
     const response = await fetch('https://api.chucknorris.io/jokes/categories');
     const data = await response.json();
@@ -119,7 +120,7 @@ app.get('/api/chuck-categories', async (_req: Request, res: Response) => {
 });
 
 // Get Dad joke
-app.get('/api/dad-joke', async (_req: Request, res: Response) => {
+app.get('/api/dad-joke', async (_req: Request, res: Response): Promise<void> => {
   try {
     const response = await fetch('https://icanhazdadjoke.com/', {
       headers: { Accept: 'application/json' }
@@ -142,15 +143,16 @@ app.get('/api/dad-joke', async (_req: Request, res: Response) => {
 
 // MCP-style endpoint for Power Platform Custom Connector
 // This provides a unified interface for all tools
-app.post('/api/mcp/execute', async (req: Request, res: Response) => {
+app.post('/api/mcp/execute', async (req: Request, res: Response): Promise<void> => {
   try {
     const { tool, parameters } = req.body;
     
     if (!tool) {
-      return res.status(400).json({
+      res.status(400).json({
         success: false,
         error: 'Tool name is required'
       });
+      return;
     }
     
     let result: any;
@@ -165,10 +167,11 @@ app.post('/api/mcp/execute', async (req: Request, res: Response) => {
       
       case 'get-chuck-joke-by-category': {
         if (!parameters?.category) {
-          return res.status(400).json({
+          res.status(400).json({
             success: false,
             error: 'Category parameter is required'
           });
+          return;
         }
         const response = await fetch(
           `https://api.chucknorris.io/jokes/random?category=${parameters.category}`
@@ -195,10 +198,11 @@ app.post('/api/mcp/execute', async (req: Request, res: Response) => {
       }
       
       default:
-        return res.status(400).json({
+        res.status(400).json({
           success: false,
           error: `Unknown tool: ${tool}`
         });
+        return;
     }
     
     res.json({
@@ -217,7 +221,7 @@ app.post('/api/mcp/execute', async (req: Request, res: Response) => {
 });
 
 // List available tools - useful for Power Platform discovery
-app.get('/api/mcp/tools', (_req: Request, res: Response) => {
+app.get('/api/mcp/tools', (_req: Request, res: Response): void => {
   res.json({
     success: true,
     tools: toolDefinitions
@@ -225,7 +229,8 @@ app.get('/api/mcp/tools', (_req: Request, res: Response) => {
 });
 
 // OpenAPI/Swagger endpoint for Power Platform Custom Connector
-app.get('/api/swagger.json', (_req: Request, res: Response) => {
+app.get('/api/swagger.json', (_req: Request, res: Response): void => {
+  const PORT = process.env.PORT ?? 3000;
   const swagger = {
     openapi: '3.0.0',
     info: {
@@ -405,7 +410,7 @@ app.get('/api/swagger.json', (_req: Request, res: Response) => {
 });
 
 // Health check endpoint
-app.get('/api/health', (_req: Request, res: Response) => {
+app.get('/api/health', (_req: Request, res: Response): void => {
   res.json({
     status: 'healthy',
     timestamp: new Date().toISOString(),
@@ -414,7 +419,7 @@ app.get('/api/health', (_req: Request, res: Response) => {
 });
 
 // Root endpoint
-app.get('/', (_req: Request, res: Response) => {
+app.get('/', (_req: Request, res: Response): void => {
   res.json({
     message: 'MCP Streamable HTTP Server for Power Platform',
     endpoints: {
