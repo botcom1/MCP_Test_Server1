@@ -4,401 +4,192 @@ import { z } from 'zod';
 const app = express();
 app.use(express.json());
 
-// Tool definitions for Power Platform
+// Tool definitions
 const toolDefinitions = [
   {
+    category: 'tool',
     name: 'get-chuck-joke',
     description: 'Get a random Chuck Norris joke',
-    operationId: 'getChuckJoke',
-    inputSchema: null
+    inputSchema: {
+      type: 'object',
+      properties: {},
+      required: []
+    }
   },
   {
+    category: 'tool',
     name: 'get-chuck-joke-by-category',
     description: 'Get a random Chuck Norris joke by category',
-    operationId: 'getChuckJokeByCategory',
     inputSchema: {
       type: 'object',
       properties: {
         category: {
           type: 'string',
-          description: 'Category of the Chuck Norris joke'
+          description: 'Category of the Chuck Norris joke',
+          enum: ['animal', 'career', 'celebrity', 'dev', 'explicit', 'fashion', 'food', 'history', 'money', 'movie', 'music', 'political', 'religion', 'science', 'sport', 'travel']
         }
       },
       required: ['category']
     }
   },
   {
+    category: 'tool',
     name: 'get-chuck-categories',
     description: 'Get all available categories for Chuck Norris jokes',
-    operationId: 'getChuckCategories',
-    inputSchema: null
+    inputSchema: {
+      type: 'object',
+      properties: {},
+      required: []
+    }
   },
   {
+    category: 'tool',
     name: 'get-dad-joke',
     description: 'Get a random Dad joke',
-    operationId: 'getDadJoke',
-    inputSchema: null
+    inputSchema: {
+      type: 'object',
+      properties: {},
+      required: []
+    }
   }
 ];
 
-// Power Platform expects standard REST endpoints
-// Each tool should be exposed as a separate endpoint for easier integration
-
-// Get Chuck Norris joke endpoint
-app.get('/api/chuck-joke', async (_req: Request, res: Response): Promise<void> => {
-  try {
-    const response = await fetch('https://api.chucknorris.io/jokes/random');
-    const data = await response.json();
-    res.json({
-      success: true,
-      data: {
-        joke: data.value,
-        id: data.id,
-        url: data.url
-      }
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: 'Failed to fetch Chuck Norris joke'
-    });
-  }
-});
-
-// Get Chuck Norris joke by category
-app.get('/api/chuck-joke/:category', async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { category } = req.params;
-    const response = await fetch(
-      `https://api.chucknorris.io/jokes/random?category=${category}`
-    );
+// Generate dynamic Swagger that creates individual operations for each tool
+function generateDynamicSwagger(host: string): any {
+  const paths: any = {};
+  
+  // Create a separate POST operation for each tool
+  toolDefinitions.forEach(tool => {
+    const operationId = tool.name.replace(/-/g, '_');
+    const pathName = `/mcp/${tool.name}`;
     
-    if (!response.ok) {
-      res.status(400).json({
-        success: false,
-        error: 'Invalid category'
-      });
-      return;
-    }
-    
-    const data = await response.json();
-    res.json({
-      success: true,
-      data: {
-        joke: data.value,
-        category: category,
-        id: data.id,
-        url: data.url
-      }
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: 'Failed to fetch Chuck Norris joke by category'
-    });
-  }
-});
-
-// Get Chuck Norris categories
-app.get('/api/chuck-categories', async (_req: Request, res: Response): Promise<void> => {
-  try {
-    const response = await fetch('https://api.chucknorris.io/jokes/categories');
-    const data = await response.json();
-    res.json({
-      success: true,
-      data: {
-        categories: data,
-        count: data.length
-      }
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: 'Failed to fetch categories'
-    });
-  }
-});
-
-// Get Dad joke
-app.get('/api/dad-joke', async (_req: Request, res: Response): Promise<void> => {
-  try {
-    const response = await fetch('https://icanhazdadjoke.com/', {
-      headers: { Accept: 'application/json' }
-    });
-    const data = await response.json();
-    res.json({
-      success: true,
-      data: {
-        joke: data.joke,
-        id: data.id
-      }
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: 'Failed to fetch Dad joke'
-    });
-  }
-});
-
-// MCP-style endpoint for Power Platform Custom Connector
-// This provides a unified interface for all tools
-app.post('/api/mcp/execute', async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { tool, parameters } = req.body;
-    
-    if (!tool) {
-      res.status(400).json({
-        success: false,
-        error: 'Tool name is required'
-      });
-      return;
-    }
-    
-    let result: any;
-    
-    switch (tool) {
-      case 'get-chuck-joke': {
-        const response = await fetch('https://api.chucknorris.io/jokes/random');
-        const data = await response.json();
-        result = { joke: data.value };
-        break;
-      }
-      
-      case 'get-chuck-joke-by-category': {
-        if (!parameters?.category) {
-          res.status(400).json({
-            success: false,
-            error: 'Category parameter is required'
-          });
-          return;
-        }
-        const response = await fetch(
-          `https://api.chucknorris.io/jokes/random?category=${parameters.category}`
-        );
-        const data = await response.json();
-        result = { joke: data.value, category: parameters.category };
-        break;
-      }
-      
-      case 'get-chuck-categories': {
-        const response = await fetch('https://api.chucknorris.io/jokes/categories');
-        const data = await response.json();
-        result = { categories: data };
-        break;
-      }
-      
-      case 'get-dad-joke': {
-        const response = await fetch('https://icanhazdadjoke.com/', {
-          headers: { Accept: 'application/json' }
-        });
-        const data = await response.json();
-        result = { joke: data.joke };
-        break;
-      }
-      
-      default:
-        res.status(400).json({
-          success: false,
-          error: `Unknown tool: ${tool}`
-        });
-        return;
-    }
-    
-    res.json({
-      success: true,
-      tool: tool,
-      result: result
-    });
-    
-  } catch (error) {
-    console.error('MCP execution error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Internal server error'
-    });
-  }
-});
-
-// List available tools - useful for Power Platform discovery
-app.get('/api/mcp/tools', (_req: Request, res: Response): void => {
-  res.json({
-    success: true,
-    tools: toolDefinitions
-  });
-});
-
-// OpenAPI/Swagger endpoint for Power Platform Custom Connector
-app.get('/api/swagger.json', (_req: Request, res: Response): void => {
-  const PORT = process.env.PORT ?? 3000;
-  const swagger = {
-    openapi: '3.0.0',
-    info: {
-      title: 'MCP Jokes API',
-      description: 'API for fetching Chuck Norris and Dad jokes',
-      version: '1.0.0'
-    },
-    servers: [
-      {
-        url: process.env.API_URL || `http://localhost:${PORT}`,
-        description: 'MCP Server'
-      }
-    ],
-    paths: {
-      '/api/chuck-joke': {
-        get: {
-          summary: 'Get a random Chuck Norris joke',
-          operationId: 'getChuckJoke',
-          responses: {
-            '200': {
-              description: 'Successful response',
-              content: {
-                'application/json': {
-                  schema: {
-                    type: 'object',
-                    properties: {
-                      success: { type: 'boolean' },
-                      data: {
-                        type: 'object',
-                        properties: {
-                          joke: { type: 'string' }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      },
-      '/api/chuck-joke/{category}': {
-        get: {
-          summary: 'Get a Chuck Norris joke by category',
-          operationId: 'getChuckJokeByCategory',
-          parameters: [
-            {
-              name: 'category',
-              in: 'path',
-              required: true,
-              schema: { type: 'string' }
-            }
-          ],
-          responses: {
-            '200': {
-              description: 'Successful response',
-              content: {
-                'application/json': {
-                  schema: {
-                    type: 'object',
-                    properties: {
-                      success: { type: 'boolean' },
-                      data: {
-                        type: 'object',
-                        properties: {
-                          joke: { type: 'string' },
-                          category: { type: 'string' }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      },
-      '/api/chuck-categories': {
-        get: {
-          summary: 'Get Chuck Norris joke categories',
-          operationId: 'getChuckCategories',
-          responses: {
-            '200': {
-              description: 'Successful response',
-              content: {
-                'application/json': {
-                  schema: {
-                    type: 'object',
-                    properties: {
-                      success: { type: 'boolean' },
-                      data: {
-                        type: 'object',
-                        properties: {
-                          categories: {
-                            type: 'array',
-                            items: { type: 'string' }
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      },
-      '/api/dad-joke': {
-        get: {
-          summary: 'Get a random Dad joke',
-          operationId: 'getDadJoke',
-          responses: {
-            '200': {
-              description: 'Successful response',
-              content: {
-                'application/json': {
-                  schema: {
-                    type: 'object',
-                    properties: {
-                      success: { type: 'boolean' },
-                      data: {
-                        type: 'object',
-                        properties: {
-                          joke: { type: 'string' }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      },
-      '/api/mcp/execute': {
-        post: {
-          summary: 'Execute MCP tool',
-          operationId: 'executeMcpTool',
-          requestBody: {
+    paths[pathName] = {
+      post: {
+        summary: tool.description,
+        operationId: operationId,
+        description: `Executes the ${tool.name} tool via JSON-RPC 2.0`,
+        consumes: ['application/json'],
+        produces: ['application/json'],
+        parameters: [
+          {
+            in: 'body',
+            name: 'body',
+            description: 'Tool execution request',
             required: true,
-            content: {
-              'application/json': {
-                schema: {
+            schema: {
+              type: 'object',
+              properties: {
+                // Pre-fill the method name for this specific tool
+                jsonrpc: {
+                  type: 'string',
+                  enum: ['2.0'],
+                  default: '2.0',
+                  'x-ms-visibility': 'internal' // Hide from Power Platform UI
+                },
+                id: {
+                  type: 'integer',
+                  default: 1,
+                  'x-ms-visibility': 'internal' // Hide from Power Platform UI
+                },
+                method: {
+                  type: 'string',
+                  enum: [tool.name],
+                  default: tool.name,
+                  'x-ms-visibility': 'internal' // Hide from Power Platform UI
+                },
+                params: tool.inputSchema.properties && Object.keys(tool.inputSchema.properties).length > 0 
+                  ? tool.inputSchema 
+                  : {
+                      type: 'object',
+                      'x-ms-visibility': 'internal',
+                      default: {}
+                    }
+              },
+              required: ['jsonrpc', 'id', 'method']
+            }
+          }
+        ],
+        responses: {
+          '200': {
+            description: 'Successful response',
+            schema: {
+              type: 'object',
+              properties: {
+                jsonrpc: { type: 'string' },
+                id: { type: 'integer' },
+                result: {
                   type: 'object',
                   properties: {
-                    tool: { type: 'string' },
-                    parameters: { type: 'object' }
-                  },
-                  required: ['tool']
-                }
-              }
-            }
-          },
-          responses: {
-            '200': {
-              description: 'Successful response',
-              content: {
-                'application/json': {
-                  schema: {
-                    type: 'object',
-                    properties: {
-                      success: { type: 'boolean' },
-                      tool: { type: 'string' },
-                      result: { type: 'object' }
+                    content: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          type: { type: 'string' },
+                          text: { type: 'string' }
+                        }
+                      }
                     }
                   }
                 }
               }
+            }
+          }
+        }
+      }
+    };
+  });
+  
+  // Also keep the generic MCP endpoint
+  paths['/mcp'] = {
+    post: {
+      summary: 'Execute any MCP tool',
+      operationId: 'callMCP',
+      description: 'Generic endpoint to invoke any registered MCP method',
+      consumes: ['application/json'],
+      produces: ['application/json'],
+      parameters: [
+        {
+          in: 'body',
+          name: 'body',
+          description: 'JSON-RPC 2.0 request envelope',
+          required: true,
+          schema: {
+            type: 'object',
+            properties: {
+              jsonrpc: {
+                type: 'string',
+                enum: ['2.0'],
+                default: '2.0'
+              },
+              id: {
+                type: 'integer',
+                format: 'int64',
+                default: 1
+              },
+              method: {
+                type: 'string',
+                description: 'MCP method to invoke',
+                enum: toolDefinitions.map(t => t.name)
+              },
+              params: {
+                type: 'object',
+                description: 'Method parameters'
+              }
+            },
+            required: ['jsonrpc', 'id', 'method']
+          }
+        }
+      ],
+      responses: {
+        '200': {
+          description: 'JSON-RPC 2.0 response',
+          schema: {
+            type: 'object',
+            properties: {
+              jsonrpc: { type: 'string' },
+              id: { type: 'integer' },
+              result: { type: 'object' }
             }
           }
         }
@@ -406,43 +197,202 @@ app.get('/api/swagger.json', (_req: Request, res: Response): void => {
     }
   };
   
+  paths['/mcp/tools'] = {
+    get: {
+      summary: 'List all available tools',
+      operationId: 'listTools',
+      produces: ['application/json'],
+      responses: {
+        '200': {
+          description: 'Array of tool definitions',
+          schema: {
+            type: 'array',
+            items: {
+              $ref: '#/definitions/Tool'
+            }
+          }
+        }
+      }
+    }
+  };
+  
+  return {
+    swagger: '2.0',
+    info: {
+      title: 'Jokes MCP Server',
+      description: 'Get jokes via MCP - each tool is exposed as a separate operation',
+      version: '1.0',
+      'x-ms-api-annotation': {
+        status: 'Production'
+      }
+    },
+    host: host,
+    basePath: '/',
+    schemes: ['https', 'http'],
+    paths: paths,
+    definitions: {
+      Tool: {
+        type: 'object',
+        properties: {
+          category: { type: 'string' },
+          name: { type: 'string' },
+          description: { type: 'string' },
+          inputSchema: { type: 'object' }
+        }
+      }
+    },
+    securityDefinitions: {},
+    security: []
+  };
+}
+
+// Handle all tool-specific endpoints
+app.post('/mcp/:toolName', async (req: Request, res: Response): Promise<void> => {
+  const { toolName } = req.params;
+  
+  // Override the method with the tool name from the URL
+  const jsonRpcRequest = {
+    jsonrpc: req.body.jsonrpc || '2.0',
+    id: req.body.id || 1,
+    method: toolName,
+    params: req.body.params || {}
+  };
+  
+  // Process as normal JSON-RPC
+  req.body = jsonRpcRequest;
+  await handleMcpRequest(req, res);
+});
+
+// Generic MCP endpoint
+app.post('/mcp', async (req: Request, res: Response): Promise<void> => {
+  await handleMcpRequest(req, res);
+});
+
+// Shared handler for all MCP requests
+async function handleMcpRequest(req: Request, res: Response): Promise<void> {
+  try {
+    const { jsonrpc, id, method, params = {} } = req.body;
+    let result: any;
+
+    switch (method) {
+      case 'get-chuck-joke': {
+        const response = await fetch('https://api.chucknorris.io/jokes/random');
+        const data = await response.json();
+        result = {
+          content: [{ type: 'text', text: data.value }]
+        };
+        break;
+      }
+
+      case 'get-chuck-joke-by-category': {
+        if (!params.category) {
+          res.json({
+            jsonrpc: '2.0',
+            id,
+            error: {
+              code: -32602,
+              message: 'Invalid params: category is required'
+            }
+          });
+          return;
+        }
+        
+        const response = await fetch(
+          `https://api.chucknorris.io/jokes/random?category=${params.category}`
+        );
+        
+        if (!response.ok) {
+          res.json({
+            jsonrpc: '2.0',
+            id,
+            error: {
+              code: -32603,
+              message: 'Invalid category'
+            }
+          });
+          return;
+        }
+        
+        const data = await response.json();
+        result = {
+          content: [{ type: 'text', text: data.value }]
+        };
+        break;
+      }
+
+      case 'get-chuck-categories': {
+        const response = await fetch('https://api.chucknorris.io/jokes/categories');
+        const data = await response.json();
+        result = {
+          content: [{ type: 'text', text: data.join(', ') }]
+        };
+        break;
+      }
+
+      case 'get-dad-joke': {
+        const response = await fetch('https://icanhazdadjoke.com/', {
+          headers: { Accept: 'application/json' }
+        });
+        const data = await response.json();
+        result = {
+          content: [{ type: 'text', text: data.joke }]
+        };
+        break;
+      }
+
+      default:
+        res.json({
+          jsonrpc: '2.0',
+          id,
+          error: {
+            code: -32601,
+            message: `Method not found: ${method}`
+          }
+        });
+        return;
+    }
+
+    res.json({
+      jsonrpc: '2.0',
+      id,
+      result
+    });
+
+  } catch (error) {
+    console.error('MCP request error:', error);
+    res.status(500).json({
+      jsonrpc: '2.0',
+      id: req.body.id || null,
+      error: {
+        code: -32603,
+        message: 'Internal server error'
+      }
+    });
+  }
+}
+
+// List tools endpoint
+app.get('/mcp/tools', (_req: Request, res: Response): void => {
+  res.json(toolDefinitions);
+});
+
+// Dynamic Swagger generation
+app.get('/api/swagger.json', (_req: Request, res: Response): void => {
+  const PORT = process.env.PORT ?? 3000;
+  const host = process.env.HOST || `localhost:${PORT}`;
+  
+  const swagger = generateDynamicSwagger(host);
   res.json(swagger);
 });
 
-// Health check endpoint
-app.get('/api/health', (_req: Request, res: Response): void => {
-  res.json({
-    status: 'healthy',
-    timestamp: new Date().toISOString(),
-    service: 'mcp-streamable-http'
-  });
-});
-
-// Root endpoint
-app.get('/', (_req: Request, res: Response): void => {
-  res.json({
-    message: 'MCP Streamable HTTP Server for Power Platform',
-    endpoints: {
-      swagger: '/api/swagger.json',
-      health: '/api/health',
-      tools: '/api/mcp/tools',
-      execute: '/api/mcp/execute'
-    }
-  });
-});
-
-// Log registered endpoints at startup
-console.log('Registered endpoints for Power Platform:');
-console.log('- GET  /api/chuck-joke');
-console.log('- GET  /api/chuck-joke/:category');
-console.log('- GET  /api/chuck-categories');
-console.log('- GET  /api/dad-joke');
-console.log('- POST /api/mcp/execute');
-console.log('- GET  /api/mcp/tools');
-console.log('- GET  /api/swagger.json');
-
 const PORT = process.env.PORT ?? 3000;
 app.listen(PORT, () => {
-  console.log(`MCP Server for Power Platform listening on port ${PORT}`);
-  console.log(`Swagger documentation available at: http://localhost:${PORT}/api/swagger.json`);
+  console.log(`MCP Server listening on port ${PORT}`);
+  console.log(`\nPower Platform Integration:`);
+  console.log(`1. Import swagger from: http://localhost:${PORT}/api/swagger.json`);
+  console.log(`2. Each tool will appear as a separate operation in Power Platform`);
+  console.log(`\nAvailable operations:`);
+  toolDefinitions.forEach(tool => {
+    console.log(`   - ${tool.name} (POST /mcp/${tool.name})`);
+  });
 });
