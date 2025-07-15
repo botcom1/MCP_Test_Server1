@@ -1,135 +1,137 @@
-// --------------------------------------------------------------
-//  MCP Server (Streamable HTTP) – Jokes Tools (Fixed API signatures)
-// --------------------------------------------------------------
-//  • Uses @modelcontextprotocol/sdk v0.4.x (TypeScript)
-//  • Correct mcp.tool() overload: name → description → paramsSchema → handler
-//  • Removes unsupported mcp.tools property (SDK hasn’t exposed it yet)
-// --------------------------------------------------------------
+/**********************************************************************
+ * Jokes MCP Server – streamable transport, ready for Copilot Studio  *
+ *********************************************************************/
 
 import express from "express";
 import { z } from "zod";
+import fetchOrig from "node-fetch";
 
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+// -------------------------------------------------------------------
+// 1. Ensure global fetch (Node <18 needs node-fetch; Node 18+ already has it)
+if (!globalThis.fetch) {
+  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  // @ts-ignore – node-fetch CommonJS default export
+  globalThis.fetch = (fetchOrig as unknown) as typeof fetch;
+}
 
-// For Node <18 poly‑fill global fetch (safe no‑op on newer runtimes)
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore
-import fetch from "node-fetch";
+// -------------------------------------------------------------------
+// 2. MCP SDK setup
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp";
 
-// --------------------------------------------------------------
-// 1️⃣  Build the MCP server and register tools
-// --------------------------------------------------------------
+const mcp = new McpServer({
+  name: "jokes-mcp",
+  version: "2.0.0",
+  description: "Chuck Norris & Dad jokes as MCP tools",
+});
 
-const mcp = new McpServer({ name: "jokes-mcp-server", version: "2.0.0" });
-
+// Chuck Norris random
 mcp.tool(
-  "get-chuck-joke",                                 // 🔹 tool name
-  "Random Chuck Norris joke",                      // 🔹 description (2nd arg)
-  {},                                               // 🔹 input schema (empty)
+  "getChuckJoke",
+  "Returns a random Chuck Norris joke",
+  z.object({}),
   async () => {
-    const data: any = await (await fetch("https://api.chucknorris.io/jokes/random")).json();
+    const rsp = await fetch("https://api.chucknorris.io/jokes/random");
+    const data = (await rsp.json()) as { value: string };
     return { content: [{ type: "text", text: data.value }] };
   }
 );
 
+// Chuck Norris by category
 mcp.tool(
-  "get-chuck-joke-by-category",
-  "Chuck joke (by category)",
-  { category: z.string() },                          // expects { category: string }
+  "getChuckJokeByCategory",
+  "Returns a Chuck Norris joke from the specified category",
+  z.object({ category: z.string() }),
   async ({ category }) => {
-    const url = `https://api.chucknorris.io/jokes/random?category=${encodeURIComponent(category)}`;
-    const resp = await fetch(url);
-    if (!resp.ok) throw new Error("Invalid category");
-    const data: any = await resp.json();
+    const rsp = await fetch(
+      `https://api.chucknorris.io/jokes/random?category=${encodeURIComponent(
+        category
+      )}`
+    );
+    const data = (await rsp.json()) as { value: string };
     return { content: [{ type: "text", text: data.value }] };
   }
 );
 
+// Chuck categories
 mcp.tool(
-  "get-chuck-categories",
-  "Chuck categories list",
-  {},
+  "getChuckCategories",
+  "Lists all available Chuck Norris joke categories",
+  z.object({}),
   async () => {
-    const data: string[] = await (await fetch("https://api.chucknorris.io/jokes/categories")).json();
-    return {
-      content: [{ type: "text", text: `Available categories: ${data.join(", ")}` }]
-    };
+    const rsp = await fetch("https://api.chucknorris.io/jokes/categories");
+    const cats = (await rsp.json()) as string[];
+    return { content: [{ type: "text", text: cats.join(", ") }] };
   }
 );
 
+// Dad joke
 mcp.tool(
-  "get-dad-joke",
-  "Random Dad joke",
-  {},
+  "getDadJoke",
+  "Returns a random Dad joke",
+  z.object({}),
   async () => {
-    const data: any = await (
-      await fetch("https://icanhazdadjoke.com/", { headers: { Accept: "application/json" } })
-    ).json();
-    return { content: [{ type: "text", text: data.joke }] };
+    const rsp = await fetch("https://icanhazdadjoke.com/", {
+      headers: { Accept: "text/plain" },
+    });
+    const joke = await rsp.text();
+    return { content: [{ type: "text", text: joke }] };
   }
 );
 
-// --------------------------------------------------------------
-// 2️⃣  Wire Streamable HTTP transport to Express
-// --------------------------------------------------------------
-
-const transport = new StreamableHTTPServerTransport();
-// It’s fine to ignore the returned promise; connect happens immediately.
-// No top‑level await = compatible with CommonJS builds.
-mcp.connect(transport);
-
+// -------------------------------------------------------------------
+// 3. Express + transport bridge
 const app = express();
+const transport = new StreamableHTTPServerTransport();
+
+// Bind SDK transport to /mcp (NO body-parser!)
 app.all("/mcp", (req, res) => transport.handleRequest(req, res, req));
 
-// --------------------------------------------------------------
-// 3️⃣  Health & metadata endpoints
-// --------------------------------------------------------------
+// Health probe
+app.get("/health", (_, res) => res.status(200).send("OK"));
 
-app.get("/health", (_req, res) => {
-  res.json({ status: "healthy", timestamp: new Date().toISOString() });
-});
+// Minimal home page
+app.get("/", (_, res) =>
+  res
+    .status(200)
+    .send(
+      "Jokes MCP Server is running. See /api/swagger.json for connector spec."
+    )
+);
 
-app.get("/", (_req, res) => {
-  res.json({ name: "Jokes MCP Server", version: "2.0.0", tools: 4 });
-});
-
-// --------------------------------------------------------------
-// 4️⃣  Minimal Swagger for Power Platform custom connector
-// --------------------------------------------------------------
-
-app.get("/api/swagger.json", (req, res) => {
-  const host = (req.headers["x-forwarded-host"] as string) ?? req.get("host") ?? "localhost:3000";
-  const swagger = {
-    swagger: "2.0",
-    info: {
-      title: "Jokes MCP Server",
-      description: "Model Context Protocol endpoint (streamable)",
-      version: "2.0.0"
+// OpenAPI 2.0 (Swagger) – minimal & MCP-flagged
+const swaggerDoc = {
+  swagger: "2.0",
+  info: {
+    title: "Jokes MCP Server",
+    description: "Streamable MCP endpoint for Copilot Studio",
+    version: "2.0.0",
+  },
+  host: "<replace-with-your-host>.azurewebsites.net",
+  basePath: "/",
+  schemes: ["https"],
+  paths: {
+    "/mcp": {
+      post: {
+        summary: "Streamable MCP endpoint",
+        operationId: "InvokeMcp",
+        "x-ms-agentic-protocol": "mcp-streamable-1.0",
+        responses: { "200": { description: "Success" } },
+      },
     },
-    host,
-    basePath: "/",
-    schemes: ["https", "http"],
-    paths: {
-      "/mcp": {
-        post: {
-          summary: "MCP Streamable endpoint",
-          operationId: "InvokeMcp",
-          "x-ms-agentic-protocol": "mcp-streamable-1.0",
-          responses: { "200": { description: "Success" } }
-        }
-      }
-    }
-  };
-  res.json(swagger);
-});
+  },
+};
 
-// --------------------------------------------------------------
-// 5️⃣  Start the HTTP server
-// --------------------------------------------------------------
+// Serve swagger
+app.get("/api/swagger.json", (_, res) => res.json(swaggerDoc));
 
-const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
-app.listen(PORT, () => {
-  console.log(`🚀 MCP server listening on http://localhost:${PORT}`);
-  console.log("Registered tools: get-chuck-joke, get-chuck-joke-by-category, get-chuck-categories, get-dad-joke");
-});
+// -------------------------------------------------------------------
+// 4. Start everything
+(async () => {
+  await mcp.connect(transport); // register transport
+
+  const PORT = process.env.PORT ?? 3000;
+  app.listen(PORT, () => {
+    console.log(`MCP server listening on port ${PORT}`);
+  });
+})();
