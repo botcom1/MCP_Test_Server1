@@ -126,4 +126,33 @@ const swaggerDoc = {
     version: "2.0.0",
   },
   host: "<replace-with-your-host>.azurewebsites.net",
-  b
+  basePath: "/",
+  schemes: ["https"],
+  paths: {
+    "/mcp": {
+      post: {
+        summary: "Streamable MCP endpoint",
+        operationId: "InvokeMcp",
+        "x-ms-agentic-protocol": "mcp-streamable-1.0",
+        responses: { "200": { description: "Success" } },
+      },
+    },
+  },
+};
+
+// Serve Swagger JSON
+app.get(
+  "/api/swagger.json",
+  ((_req: Request, res: Response): void => {
+    res.json(swaggerDoc);
+  }) as RequestHandler,
+);
+
+// -------------------------------------------------------------------
+// 3. Start
+(async () => {
+  await mcp.connect(transport);
+
+  const PORT = Number(process.env.PORT) || 3000;
+  app.listen(PORT, () => console.log(`MCP server listening on ${PORT}`));
+})();
