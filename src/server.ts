@@ -1,21 +1,21 @@
 /**********************************************************************
- * Jokes MCP Server – streamable transport (Copilot Studio-ready)    *
+ *  Jokes MCP Server – streamable transport (Copilot Studio-ready)   *
  *********************************************************************/
 
 import express from "express";
 import { z } from "zod";
 import fetchOrig from "node-fetch";
+import { randomUUID } from "crypto";   // For sessionIdGenerator
 
-// -------------------------------------------------------------------
-// 0.  Make global fetch() work on Node < 18 (Azure LTS images)
+// ------------------------------------------------------------------
+// 0.  Make global fetch() work on Node < 18
 if (!globalThis.fetch) {
-  // node-fetch default export is CommonJS
   // eslint-disable-next-line @typescript-eslint/ban-ts-comment
   // @ts-ignore
   globalThis.fetch = fetchOrig as unknown as typeof fetch;
 }
 
-// -------------------------------------------------------------------
+// ------------------------------------------------------------------
 // 1.  MCP SDK
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -26,26 +26,19 @@ const mcp = new McpServer({
   description: "Chuck Norris & Dad jokes exposed as MCP tools",
 });
 
-// -------------------------------------------------------------------
+// ------------------------------------------------------------------
 // 2.  Helpers
-type ToolTextResponse = { content: { type: "text"; text: string }[] };
-const text = (t: string): ToolTextResponse => ({ content: [{ type: "text", text: t }] });
+type ToolText = { content: { type: "text"; text: string }[] };
+const text = (t: string): ToolText => ({ content: [{ type: "text", text: t }] });
+const fetchJSON = async <T>(url: string): Promise<T> => (await fetch(url)).json();
 
-async function fetchJSON<T>(url: string): Promise<T> {
-  const r = await fetch(url);
-  return r.json() as Promise<T>;
-}
-
-// -------------------------------------------------------------------
-// 3.  Tools  (3rd arg = raw-shape, not z.object)
-
-// 3.1 Chuck Norris random
+// ------------------------------------------------------------------
+// 3.  Tools   (3rd arg = raw Zod shape, not z.object)
 mcp.tool("getChuckJoke", "Random Chuck Norris joke", {}, async () => {
   const { value } = await fetchJSON<{ value: string }>("https://api.chucknorris.io/jokes/random");
   return text(value);
 });
 
-// 3.2 Chuck Norris by category
 mcp.tool(
   "getChuckJokeByCategory",
   "Chuck Norris joke from a given category",
@@ -58,26 +51,26 @@ mcp.tool(
   },
 );
 
-// 3.3 List categories
 mcp.tool("getChuckCategories", "List Chuck Norris joke categories", {}, async () => {
   const cats = await fetchJSON<string[]>("https://api.chucknorris.io/jokes/categories");
   return text(cats.join(", "));
 });
 
-// 3.4 Dad joke
 mcp.tool("getDadJoke", "Random Dad joke", {}, async () => {
   const resp = await fetch("https://icanhazdadjoke.com/", { headers: { Accept: "text/plain" } });
   return text(await resp.text());
 });
 
-// -------------------------------------------------------------------
+// ------------------------------------------------------------------
 // 4.  Express bridge
 const app = express();
 
-// Pass an OPTIONS object (even empty) to satisfy the ctor signature
-const transport = new StreamableHTTPServerTransport({});
+// ctor now needs a sessionIdGenerator
+const transport = new StreamableHTTPServerTransport({
+  sessionIdGenerator: () => randomUUID(),
+});
 
-// MCP endpoint  (no body-parser!)
+// MCP endpoint (no body-parser!)
 app.all("/mcp", (req, res) => {
   transport.handleRequest(req, res, req);
 });
@@ -92,7 +85,7 @@ app.get("/", (_req, res) => {
   res.send("Jokes MCP Server – see /api/swagger.json");
 });
 
-// Swagger 2.0 (minimal, MCP-flagged)
+// Swagger 2.0  (minimal, MCP-flagged)
 const swaggerDoc = {
   swagger: "2.0",
   info: {
@@ -115,9 +108,11 @@ const swaggerDoc = {
   },
 };
 
-app.get("/api/swagger.json", (_req, res) => res.json(swaggerDoc));
+app.get("/api/swagger.json", (_req, res) => {
+  res.json(swaggerDoc);
+});
 
-// -------------------------------------------------------------------
+// ------------------------------------------------------------------
 // 5.  Start server
 (async () => {
   await mcp.connect(transport);
