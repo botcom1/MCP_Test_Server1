@@ -7,9 +7,9 @@ import { z } from "zod";
 import fetchOrig from "node-fetch";
 
 // -------------------------------------------------------------------
-// 0.  Make global fetch() work on Node < 18 (App Service LTS images)
+// 0.  Make global fetch() work on Node < 18 (Azure LTS images)
 if (!globalThis.fetch) {
-  // node-fetch publishes a CommonJS default export
+  // node-fetch default export is CommonJS
   // eslint-disable-next-line @typescript-eslint/ban-ts-comment
   // @ts-ignore
   globalThis.fetch = fetchOrig as unknown as typeof fetch;
@@ -27,26 +27,25 @@ const mcp = new McpServer({
 });
 
 // -------------------------------------------------------------------
-// 2.  Helper – plain-text MCP response
+// 2.  Helpers
 type ToolTextResponse = { content: { type: "text"; text: string }[] };
 const text = (t: string): ToolTextResponse => ({ content: [{ type: "text", text: t }] });
 
-// Generic JSON fetch helper
 async function fetchJSON<T>(url: string): Promise<T> {
   const r = await fetch(url);
   return r.json() as Promise<T>;
 }
 
 // -------------------------------------------------------------------
-// 3.  Register tools  (note: 3rd arg is **raw Zod shape**, NOT z.object)
+// 3.  Tools  (3rd arg = raw-shape, not z.object)
 
-// 3.1 Chuck Norris random joke  – no params
+// 3.1 Chuck Norris random
 mcp.tool("getChuckJoke", "Random Chuck Norris joke", {}, async () => {
   const { value } = await fetchJSON<{ value: string }>("https://api.chucknorris.io/jokes/random");
   return text(value);
 });
 
-// 3.2 Chuck Norris joke by category
+// 3.2 Chuck Norris by category
 mcp.tool(
   "getChuckJokeByCategory",
   "Chuck Norris joke from a given category",
@@ -59,7 +58,7 @@ mcp.tool(
   },
 );
 
-// 3.3 List Chuck Norris categories
+// 3.3 List categories
 mcp.tool("getChuckCategories", "List Chuck Norris joke categories", {}, async () => {
   const cats = await fetchJSON<string[]>("https://api.chucknorris.io/jokes/categories");
   return text(cats.join(", "));
@@ -74,7 +73,9 @@ mcp.tool("getDadJoke", "Random Dad joke", {}, async () => {
 // -------------------------------------------------------------------
 // 4.  Express bridge
 const app = express();
-const transport = new StreamableHTTPServerTransport();
+
+// Pass an OPTIONS object (even empty) to satisfy the ctor signature
+const transport = new StreamableHTTPServerTransport({});
 
 // MCP endpoint  (no body-parser!)
 app.all("/mcp", (req, res) => {
@@ -114,9 +115,7 @@ const swaggerDoc = {
   },
 };
 
-app.get("/api/swagger.json", (_req, res) => {
-  res.json(swaggerDoc);
-});
+app.get("/api/swagger.json", (_req, res) => res.json(swaggerDoc));
 
 // -------------------------------------------------------------------
 // 5.  Start server
