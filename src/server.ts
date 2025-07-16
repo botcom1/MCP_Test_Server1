@@ -91,21 +91,36 @@ const swaggerDoc = {
   info: {
     title:       "Jokes MCP Server",
     description: "Streamable MCP endpoint for Copilot Studio",
-    version:     "2.0.0",
+    version:     "2.0.0"
   },
-  host:     "<replace-with-your-host>.azurewebsites.net",
+  host: "<replace-with-your-host>.azurewebsites.net",
   basePath: "/",
-  schemes:  ["https"],
+  schemes: ["https"],
   paths: {
     "/mcp": {
       post: {
-        summary:                 "Streamable MCP endpoint",
-        operationId:             "InvokeMcp",
+        summary: "Streamable MCP endpoint",
+        operationId: "InvokeMcp",
         "x-ms-agentic-protocol": "mcp-streamable-1.0",
-        responses: { "200": { description: "Success" } },
-      },
-    },
-  },
+
+        // --- These four lines are the ONLY additions ---
+        consumes: ["application/json"],
+        produces: ["application/json", "text/event-stream"],
+        parameters: [
+          {
+            in: "header",
+            name: "Accept",
+            required: false,
+            type: "string",
+            default: "application/json, text/event-stream"
+          }
+        ],
+        // ------------------------------------------------
+
+        responses: { "200": { description: "Success" } }
+      }
+    }
+  }
 };
 
 app.get("/api/swagger.json", (_req, res) => {
