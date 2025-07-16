@@ -1,7 +1,0 @@
-name: hello-world
-on: [push]
-jobs:
-  sanity:
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo "Runner started – hold is gone"
