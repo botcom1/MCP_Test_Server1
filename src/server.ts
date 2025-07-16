@@ -70,18 +70,6 @@ const transport = new StreamableHTTPServerTransport({
   sessionIdGenerator: () => randomUUID(),
 });
 
-// Ensure Accept header satisfies the SDK check
-app.use("/mcp", (req, _res, next) => {
-  const accept = (req.headers.accept || "").toLowerCase();
-  if (!accept.includes("application/json")) {
-    req.headers.accept = accept ? `${accept},application/json` : "application/json";
-  }
-  if (!accept.includes("text/event-stream")) {
-    req.headers.accept += ", text/event-stream";
-  }
-  next();
-});
-
 // MCP endpoint (no body-parser!)
 app.all("/mcp", (req, res) => {
   transport.handleRequest(req, res, req);
